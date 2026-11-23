@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<meta name="description" content="월·수·금·토 무분할 운동 세트 카운터">
+<link rel="manifest" href="manifest.webmanifest">
+<title>운동 세트 카운터</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1020;--panel:#151d30;--panel2:#202b42;--text:#f3f6fc;--muted:#9aa8bf;--line:#2c3850;--accent:#72d6a0;--blue:#8eb7ff;--danger:#ff8585}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{max-width:620px;margin:auto;padding:18px 16px 40px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 18px}
+h1{font-size:22px;margin:0;font-weight:800}.sub{color:var(--muted);font-size:13px;margin-top:5px}
+.pill{font-size:12px;color:var(--accent);border:1px solid #315c4a;border-radius:999px;padding:6px 10px;white-space:nowrap}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px;margin:12px 0}
+.progress-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.big{font-size:25px;font-weight:800;font-variant-numeric:tabular-nums}.muted{color:var(--muted)}
+.track{height:9px;background:#303b50;border-radius:99px;overflow:hidden}.fill{height:100%;width:0;background:var(--accent);transition:width .15s}
+.section-title{font-size:14px;font-weight:750;margin:18px 2px 8px;color:#dce5f5}
+.item{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}.item:last-child{border:0}
+.item-main{flex:1;min-width:0}.name{font-weight:700;font-size:15px}.detail{font-size:12px;color:var(--muted);margin-top:3px}
+.controls{display:flex;align-items:center;gap:8px}.count{min-width:48px;text-align:center;font-weight:750;font-variant-numeric:tabular-nums}
+button{font:inherit;cursor:pointer;border:0;border-radius:12px;padding:10px 13px;background:var(--panel2);color:var(--text);font-weight:700}
+button:active{transform:scale(.97)}button:disabled{opacity:.35;cursor:default}
+.step{width:42px;height:42px;padding:0;font-size:22px}.add{background:#244b3b;color:#aaf0c8}
+.tabs{display:flex;gap:8px}.tabs button{flex:1;border:1px solid var(--line)}.tabs button.active{background:#294b3d;border-color:#4d9a72;color:#b8f3d0}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:14px}.primary{background:var(--accent);color:#082015}.secondary{background:var(--panel2)}.warn{color:var(--danger);border:1px solid #70404a;background:transparent}
+.note{font-size:12px;line-height:1.55;color:var(--muted)}
+.history-row{padding:11px 0;border-bottom:1px solid var(--line)}.history-row:last-child{border:0}.history-top{display:flex;justify-content:space-between;gap:8px;font-weight:700}.history-detail{font-size:12px;color:var(--muted);margin-top:5px}
+footer{text-align:center;color:var(--muted);font-size:11px;padding:20px 0}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<main>
+<header><div><h1>운동 세트 카운터</h1><div class="sub">월 · 수 · 금 · 토 / 무분할 루틴</div></div><span class="pill">기기 내 저장</span></header>
+
+<section class="card">
+  <div class="progress-head"><div><div class="muted" style="font-size:12px">오늘의 진행률</div><div id="progressText" class="big">0 / 26세트</div></div><div id="percent" class="big" style="color:var(--accent)">0%</div></div>
+  <div class="track"><div id="progressFill" class="fill"></div></div>
+  <div class="sub" id="todayLabel"></div>
+</section>
+
+<section class="card">
+  <div class="section-title" style="margin-top:0">등 운동 선택 — 하루 하나만</div>
+  <div class="tabs">
+    <button id="pullBtn" class="active" type="button">풀업</button>
+    <button id="rowBtn" type="button">덤벨로우</button>
+  </div>
+  <div class="note" style="margin-top:9px">선택한 운동만 오늘의 4세트에 포함돼. 다른 운동으로 바꿔도 진행 세트는 별도로 유지돼.</div>
+</section>
+
+<div id="exerciseList"></div>
+
+<section class="card">
+  <div class="actions">
+    <button class="primary" id="finishBtn">운동 완료 · 기록 저장</button>
+    <button class="secondary" id="resetBtn">오늘 진행 초기화</button>
+  </div>
+  <p class="note">완료를 누르면 날짜·등 운동 종류·세트 기록이 저장되고 다음 운동을 위해 카운터가 초기화돼. 중간에 앱을 닫아도 현재 진행 상황은 이 기기에 저장돼.</p>
+</section>
+
+<section class="card">
+  <div class="progress-head"><strong>지난 운동 기록</strong><button id="clearHistoryBtn" class="warn" style="font-size:12px;padding:7px 9px">기록 전체 삭제</button></div>
+  <div id="history"></div>
+</section>
+<footer>기록은 이 브라우저의 기기 내부에 저장됩니다. 브라우저 데이터 삭제 또는 기기 변경 시 사라질 수 있어요.</footer>
+</main>
+<script>
+const routine = [
+ {id:"rdl",name:"원레그 데드리프트",sets:2,group:"하체"},
+ {id:"bss",name:"불가리안 스플릿 스쿼트",sets:2,group:"하체"},
+ {id:"curlleg",name:"레그컬",sets:2,group:"하체"},
+ {id:"extendleg",name:"레그익스텐션",sets:2,group:"하체"},
+ {id:"bench",name:"벤치프레스",sets:4,group:"가슴"},
+ {id:"back",name:"등 운동",sets:4,group:"등"},
+ {id:"ohp",name:"OHP",sets:2,group:"어깨"},
+ {id:"lateral",name:"사레레",sets:3,group:"어깨"},
+ {id:"facepull",name:"페이스풀",sets:2,group:"어깨"},
+ {id:"dbcurl",name:"덤벨컬",sets:2,group:"팔"},
+ {id:"triext",name:"덤벨 오버헤드 익스텐션",sets:1,group:"팔"}
+];
+const KEY="workoutCounter_v1";
+const initial=()=>({date:new Date().toLocaleDateString("sv-SE"),back:"풀업",counts:Object.fromEntries(routine.map(x=>[x.id,0])),history:[]});
+let state;
+try{state=JSON.parse(localStorage.getItem(KEY))||initial()}catch{state=initial()}
+if(!state.counts)state=initial();
+function save(){localStorage.setItem(KEY,JSON.stringify(state))}
+function total(){return routine.reduce((s,x)=>s+(state.counts[x.id]||0),0)}
+function target(){return routine.reduce((s,x)=>s+x.sets,0)}
+function render(){
+ document.getElementById("todayLabel").textContent=new Date().toLocaleDateString("ko-KR",{year:"numeric",month:"long",day:"numeric",weekday:"long"});
+ const t=total(),max=target(),p=Math.round(t/max*100);
+ document.getElementById("progressText").textContent=`${t} / ${max}세트`;
+ document.getElementById("percent").textContent=p+"%";
+ document.getElementById("progressFill").style.width=p+"%";
+ document.getElementById("pullBtn").classList.toggle("active",state.back==="풀업");
+ document.getElementById("rowBtn").classList.toggle("active",state.back==="덤벨로우");
+ const list=document.getElementById("exerciseList");list.innerHTML="";
+ let group="";
+ routine.forEach(ex=>{
+   if(ex.group!==group){group=ex.group;const h=document.createElement("div");h.className="section-title";h.textContent=group;list.append(h)}
+   const count=state.counts[ex.id]||0;
+   const row=document.createElement("section");row.className="card";row.style.padding="5px 14px";row.style.margin="8px 0";
+   const item=document.createElement("div");item.className="item";
+   const main=document.createElement("div");main.className="item-main";
+   const name=document.createElement("div");name.className="name";name.textContent=ex.id==="back"?state.back:ex.name;
+   const detail=document.createElement("div");detail.className="detail";detail.textContent=`${count} / ${ex.sets}세트 완료`;
+   main.append(name,detail);
+   const controls=document.createElement("div");controls.className="controls";
+   const minus=document.createElement("button");minus.className="step";minus.textContent="−";minus.disabled=count<=0;minus.setAttribute("aria-label",ex.name+" 한 세트 취소");
+   minus.onclick=()=>{state.counts[ex.id]=Math.max(0,count-1);save();render()};
+   const c=document.createElement("div");c.className="count";c.textContent=count+"/"+ex.sets;
+   const plus=document.createElement("button");plus.className="step add";plus.textContent="+";plus.disabled=count>=ex.sets;plus.setAttribute("aria-label",ex.name+" 한 세트 완료");
+   plus.onclick=()=>{state.counts[ex.id]=Math.min(ex.sets,count+1);save();render()};
+   controls.append(minus,c,plus);item.append(main,controls);row.append(item);list.append(row);
+ });
+ renderHistory();
+}
+function renderHistory(){
+ const el=document.getElementById("history");el.innerHTML="";
+ if(!state.history.length){const p=document.createElement("p");p.className="note";p.textContent="아직 저장된 운동 기록이 없어.";el.append(p);return}
+ state.history.slice().reverse().forEach(h=>{
+   const div=document.createElement("div");div.className="history-row";
+   const top=document.createElement("div");top.className="history-top";
+   const date=document.createElement("span");date.textContent=h.date;
+   const total=document.createElement("span");total.textContent=`${h.total}/${h.target}세트`;
+   top.append(date,total);
+   const detail=document.createElement("div");detail.className="history-detail";detail.textContent=`등: ${h.back} · ${h.details}`;
+   div.append(top,detail);el.append(div);
+ });
+}
+document.getElementById("pullBtn").onclick=()=>{state.back="풀업";save();render()};
+document.getElementById("rowBtn").onclick=()=>{state.back="덤벨로우";save();render()};
+document.getElementById("resetBtn").onclick=()=>{if(confirm("오늘 진행한 세트를 모두 초기화할까?")){state.counts=Object.fromEntries(routine.map(x=>[x.id,0]));save();render()}};
+document.getElementById("finishBtn").onclick=()=>{
+ const t=total();if(t===0){alert("완료한 세트가 없어. 먼저 세트를 체크해줘.");return}
+ if(!confirm(`${t}/${target()}세트를 기록하고 오늘 카운터를 초기화할까?`))return;
+ const details=routine.filter(x=>x.id!=="back").map(x=>`${x.name} ${state.counts[x.id]||0}/${x.sets}`).join(" · ");
+ state.history.push({date:new Date().toLocaleString("ko-KR"),back:state.back,total:t,target:target(),details});
+ state.counts=Object.fromEntries(routine.map(x=>[x.id,0]));state.date=new Date().toLocaleDateString("sv-SE");save();render();
+};
+document.getElementById("clearHistoryBtn").onclick=()=>{if(confirm("저장된 운동 기록을 모두 삭제할까?")){state.history=[];save();renderHistory()}};
+render();
+if("serviceWorker" in navigator && location.protocol.startsWith("http")){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}))}
+</script>
+</body>
+</html>
