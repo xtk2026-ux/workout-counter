@@ -34,21 +34,29 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:20px 0}
 </head>
 <body>
 <main>
-<header><div><h1>운동 세트 카운터</h1><div class="sub">월 · 수 · 금 · 토 / 무분할 루틴</div></div><span class="pill">기기 내 저장</span></header>
+<header><div><h1>운동 세트 카운터</h1><div class="sub">월 · 수 · 금 · 토 / 무분할 루틴</div></div><div style="text-align:right"><div id="clock" class="big" style="font-size:20px">00:00:00</div><span class="pill" id="dayStatus">기기 내 저장</span></div></header>
 
-<section class="card">
-  <div class="progress-head"><div><div class="muted" style="font-size:12px">오늘의 진행률</div><div id="progressText" class="big">0 / 26세트</div></div><div id="percent" class="big" style="color:var(--accent)">0%</div></div>
-  <div class="track"><div id="progressFill" class="fill"></div></div>
-  <div class="sub" id="todayLabel"></div>
+
+<section class="card" id="weightCard">
+  <div class="progress-head"><strong>체중 기록</strong><span class="muted" style="font-size:12px">kg</span></div>
+  <div style="display:flex;gap:9px;align-items:center">
+    <input id="weightInput" type="number" inputmode="decimal" step="0.01" min="20" max="300" placeholder="예: 82.95" style="flex:1;min-width:0;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px;font:inherit">
+    <button class="primary" id="saveWeightBtn">기록</button>
+  </div>
+  <div id="weightSummary" class="sub" style="margin-top:10px">아직 체중 기록이 없어.</div>
+  <div id="weightChart" style="margin-top:12px"></div>
+  <div id="weightHistory" class="note" style="margin-top:8px"></div>
+  <div class="actions" style="margin-top:12px">
+    <button class="secondary" id="exportWeightCsvBtn">체중 CSV 저장</button>
+    <button class="secondary" id="exportAllJsonBtn">전체 기록 JSON 저장</button>
+  </div>
+  <div class="note" style="margin-top:8px">CSV는 체중 추세 분석용, JSON은 체중과 운동 기록을 함께 보관·분석할 때 사용해. 저장한 파일을 이 채팅에 첨부하면 분석할 수 있어.</div>
 </section>
 
 <section class="card">
-  <div class="section-title" style="margin-top:0">등 운동 선택 — 하루 하나만</div>
-  <div class="tabs">
-    <button id="pullBtn" class="active" type="button">풀업</button>
-    <button id="rowBtn" type="button">덤벨로우</button>
-  </div>
-  <div class="note" style="margin-top:9px">선택한 운동만 오늘의 4세트에 포함돼. 다른 운동으로 바꿔도 진행 세트는 별도로 유지돼.</div>
+  <div class="progress-head"><div><div class="muted" style="font-size:12px">오늘의 진행률</div><div id="progressText" class="big">0 / 31세트</div></div><div id="percent" class="big" style="color:var(--accent)">0%</div></div>
+  <div class="track"><div id="progressFill" class="fill"></div></div>
+  <div class="sub" id="todayLabel"></div>
 </section>
 
 <div id="exerciseList"></div>
@@ -69,55 +77,240 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:20px 0}
 </main>
 <script>
 const routine = [
- {id:"rdl",name:"원레그 데드리프트",sets:2,group:"하체"},
- {id:"bss",name:"불가리안 스플릿 스쿼트",sets:2,group:"하체"},
+ {id:"calfraise",name:"카프레이즈",sets:4,group:"하체"},
+ {id:"facepull",name:"페이스풀",sets:3,group:"어깨"},
  {id:"curlleg",name:"레그컬",sets:2,group:"하체"},
  {id:"extendleg",name:"레그익스텐션",sets:2,group:"하체"},
- {id:"bench",name:"벤치프레스",sets:4,group:"가슴"},
- {id:"back",name:"등 운동",sets:4,group:"등"},
+ {id:"deadbug",name:"데드버그",sets:4,group:"코어"},
+ {id:"bench_flat",name:"벤치프레스",sets:2,group:"가슴"},
+ {id:"bench_incline",name:"인클라인 프레스",sets:2,group:"가슴"},
  {id:"ohp",name:"OHP",sets:2,group:"어깨"},
  {id:"lateral",name:"사레레",sets:3,group:"어깨"},
- {id:"facepull",name:"페이스풀",sets:2,group:"어깨"},
- {id:"dbcurl",name:"덤벨컬",sets:2,group:"팔"},
- {id:"triext",name:"덤벨 오버헤드 익스텐션",sets:1,group:"팔"}
+ {id:"rdl",name:"원레그 데드리프트",sets:2,group:"하체"},
+ {id:"bss",name:"불가리안 스플릿 스쿼트",sets:2,group:"하체"},
+ {id:"pullup",name:"풀업",sets:2,group:"등"},
+ {id:"dbrow",name:"덤벨로우",sets:2,group:"등"},
+ {id:"dbcurl",name:"덤벨컬",sets:2,group:"덤벨 운동"},
+ {id:"triext",name:"라잉 트라이셉스 익스텐션",sets:2,group:"덤벨 운동"}
 ];
 const KEY="workoutCounter_v1";
-const initial=()=>({date:new Date().toLocaleDateString("sv-SE"),back:"풀업",counts:Object.fromEntries(routine.map(x=>[x.id,0])),history:[]});
+const workoutDays=[1,3,5,6]; // 월, 수, 금, 토
+const dateKey=(d=new Date())=>d.toLocaleDateString("sv-SE");
+const dayOf=(d=new Date())=>d.getDay();
+const isWorkoutDay=(d=new Date())=>workoutDays.includes(dayOf(d));
+const initial=()=>({date:dateKey(),back:"풀업",counts:Object.fromEntries(routine.map(x=>[x.id,0])),history:[]});
 let state;
 try{state=JSON.parse(localStorage.getItem(KEY))||initial()}catch{state=initial()}
 if(!state.counts)state=initial();
+routine.forEach(x=>{if(typeof state.counts[x.id]!=="number")state.counts[x.id]=0});
+if(!Array.isArray(state.history))state.history=[];
+if(!Array.isArray(state.weightHistory))state.weightHistory=[];
+if(!state.date)state.date=dateKey();
+
 function save(){localStorage.setItem(KEY,JSON.stringify(state))}
-function total(){return routine.reduce((s,x)=>s+(state.counts[x.id]||0),0)}
-function target(){return routine.reduce((s,x)=>s+x.sets,0)}
+function activeRoutine(d=new Date()){
+ const day=dayOf(d);
+ return routine.map(x=>{
+   if(x.id==="triext") return {...x,sets:(day===3||day===6)?2:0};
+   return x;
+ }).filter(x=>x.sets>0);
+}
+function archiveAndReset(oldDate){
+ const oldDay=new Date(oldDate+"T12:00:00");
+ const oldRoutine=routine.filter(x=>x.id!=="triext" || oldDay.getDay()===3 || oldDay.getDay()===6);
+ const done=oldRoutine.reduce((s,x)=>s+(state.counts[x.id]||0),0);
+ if(done>0){
+   const oldTarget=oldRoutine.reduce((s,x)=>s+(x.id==="triext"?2:x.sets),0);
+   const details=oldRoutine.map(x=>`${x.name} ${state.counts[x.id]||0}/${x.id==="triext"?2:x.sets}`).join(" · ");
+   state.history.push({date:oldDate+" (자동 저장)",total:done,target:oldTarget,details});
+ }
+ state.counts=Object.fromEntries(routine.map(x=>[x.id,0]));
+ state.date=dateKey();
+ save();
+}
+function checkDateRollover(){
+ const today=dateKey();
+ if(state.date!==today && isWorkoutDay()){
+   archiveAndReset(state.date);
+   render();
+   renderHistory();
+ }
+}
+function total(){return activeRoutine().reduce((s,x)=>s+(state.counts[x.id]||0),0)}
+function target(){return activeRoutine().reduce((s,x)=>s+x.sets,0)}
 function render(){
- document.getElementById("todayLabel").textContent=new Date().toLocaleDateString("ko-KR",{year:"numeric",month:"long",day:"numeric",weekday:"long"});
- const t=total(),max=target(),p=Math.round(t/max*100);
+ const now=new Date();
+ document.getElementById("todayLabel").textContent=now.toLocaleDateString("ko-KR",{year:"numeric",month:"long",day:"numeric",weekday:"long"});
+ const clock=document.getElementById("clock");
+ if(clock)clock.textContent=now.toLocaleTimeString("ko-KR",{hour12:false});
+ const status=document.getElementById("dayStatus");
+ if(status)status.textContent=isWorkoutDay(now)?"운동일 · 자동 초기화":"휴식일";
+ const todayRoutine=activeRoutine(now);
+ const t=total(),max=target(),p=max?Math.round(t/max*100):0;
  document.getElementById("progressText").textContent=`${t} / ${max}세트`;
  document.getElementById("percent").textContent=p+"%";
  document.getElementById("progressFill").style.width=p+"%";
- document.getElementById("pullBtn").classList.toggle("active",state.back==="풀업");
- document.getElementById("rowBtn").classList.toggle("active",state.back==="덤벨로우");
- const list=document.getElementById("exerciseList");list.innerHTML="";
- let group="";
- routine.forEach(ex=>{
-   if(ex.group!==group){group=ex.group;const h=document.createElement("div");h.className="section-title";h.textContent=group;list.append(h)}
-   const count=state.counts[ex.id]||0;
-   const row=document.createElement("section");row.className="card";row.style.padding="5px 14px";row.style.margin="8px 0";
-   const item=document.createElement("div");item.className="item";
-   const main=document.createElement("div");main.className="item-main";
-   const name=document.createElement("div");name.className="name";name.textContent=ex.id==="back"?state.back:ex.name;
-   const detail=document.createElement("div");detail.className="detail";detail.textContent=`${count} / ${ex.sets}세트 완료`;
-   main.append(name,detail);
-   const controls=document.createElement("div");controls.className="controls";
-   const minus=document.createElement("button");minus.className="step";minus.textContent="−";minus.disabled=count<=0;minus.setAttribute("aria-label",ex.name+" 한 세트 취소");
-   minus.onclick=()=>{state.counts[ex.id]=Math.max(0,count-1);save();render()};
-   const c=document.createElement("div");c.className="count";c.textContent=count+"/"+ex.sets;
-   const plus=document.createElement("button");plus.className="step add";plus.textContent="+";plus.disabled=count>=ex.sets;plus.setAttribute("aria-label",ex.name+" 한 세트 완료");
-   plus.onclick=()=>{state.counts[ex.id]=Math.min(ex.sets,count+1);save();render()};
-   controls.append(minus,c,plus);item.append(main,controls);row.append(item);list.append(row);
- });
- renderHistory();
+
+ const list=document.getElementById("exerciseList");
+ list.innerHTML="";
+ if(!isWorkoutDay(now)){
+   const rest=document.createElement("section");
+   rest.className="card";
+   rest.innerHTML='<div style="font-weight:750">오늘은 휴식일</div><div class="note" style="margin-top:6px">운동 카운터는 다음 운동일에 자동으로 초기화돼.</div>';
+   list.append(rest);
+   return;
+ }
+
+ function renderGroup(items, title){
+   if(!items.length)return;
+   const heading=document.createElement("div");
+   heading.className="section-title";
+   heading.textContent=title;
+   list.append(heading);
+   let group="";
+   items.forEach(ex=>{
+     if(ex.group!==group){
+       group=ex.group;
+       const h=document.createElement("div");
+       h.className="section-title";
+       h.style.marginTop="12px";
+       h.style.fontSize="12px";
+       h.style.color="var(--muted)";
+       h.textContent=group;
+       list.append(h);
+     }
+     const count=state.counts[ex.id]||0;
+     const row=document.createElement("section");
+     row.className="card";
+     row.style.padding="5px 14px";
+     row.style.margin="8px 0";
+     const item=document.createElement("div");
+     item.className="item";
+     const main=document.createElement("div");
+     main.className="item-main";
+     const name=document.createElement("div");
+     name.className="name";
+     name.textContent=ex.name;
+     const detail=document.createElement("div");
+     detail.className="detail";
+     detail.textContent=`${count} / ${ex.sets}세트 완료`;
+     main.append(name,detail);
+     const controls=document.createElement("div");
+     controls.className="controls";
+     const minus=document.createElement("button");
+     minus.className="step";
+     minus.textContent="−";
+     minus.disabled=count<=0;
+     minus.setAttribute("aria-label",ex.name+" 한 세트 취소");
+     minus.onclick=()=>{
+       state.counts[ex.id]=Math.max(0,(state.counts[ex.id]||0)-1);
+       save();render();
+     };
+     const c=document.createElement("div");
+     c.className="count";
+     c.textContent=count+"/"+ex.sets;
+     const plus=document.createElement("button");
+     plus.className="step add";
+     plus.textContent="+";
+     plus.disabled=count>=ex.sets;
+     plus.setAttribute("aria-label",ex.name+" 한 세트 완료");
+     plus.onclick=()=>{
+       state.counts[ex.id]=Math.min(ex.sets,(state.counts[ex.id]||0)+1);
+       save();render();
+     };
+     controls.append(minus,c,plus);
+     item.append(main,controls);
+     row.append(item);
+     list.append(row);
+   });
+ }
+ const remaining=todayRoutine.filter(ex=>(state.counts[ex.id]||0)<ex.sets);
+ const completed=todayRoutine.filter(ex=>(state.counts[ex.id]||0)>=ex.sets);
+ renderGroup(remaining,"진행할 운동");
+ renderGroup(completed,"완료한 운동");
 }
+function downloadText(filename, content, mime){
+ const blob=new Blob(["\ufeff"+content],{type:mime});
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement("a");
+ a.href=url;a.download=filename;
+ document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function csvCell(value){
+ const s=String(value??"");
+ return '"'+s.replace(/"/g,'""')+'"';
+}
+document.getElementById("exportWeightCsvBtn").onclick=()=>{
+ const rows=[["date","weight_kg"],...state.weightHistory.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(x=>[x.date,x.weight])];
+ const csv=rows.map(row=>row.map(csvCell).join(",")).join("\r\n");
+ downloadText("weight_history.csv",csv,"text/csv;charset=utf-8");
+};
+document.getElementById("exportAllJsonBtn").onclick=()=>{
+ const payload={
+   exported_at:new Date().toISOString(),
+   timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,
+   weight_unit:"kg",
+   weight_history:state.weightHistory.slice().sort((a,b)=>a.date.localeCompare(b.date)),
+   workout_history:state.history,
+   current_workout:{date:state.date,counts:state.counts,routine}
+ };
+ downloadText("workout_and_weight_history.json",JSON.stringify(payload,null,2),"application/json;charset=utf-8");
+};
+function renderWeight(){
+ const entries=state.weightHistory.slice().sort((a,b)=>a.date.localeCompare(b.date));
+ const input=document.getElementById("weightInput");
+ const today=dateKey();
+ const todayEntry=entries.find(x=>x.date===today);
+ if(todayEntry && document.activeElement!==input)input.value=todayEntry.weight;
+ const summary=document.getElementById("weightSummary");
+ const chart=document.getElementById("weightChart");
+ const history=document.getElementById("weightHistory");
+ if(!entries.length){
+   summary.textContent="아직 체중 기록이 없어. 운동하는 날 체중을 입력하고 기록을 눌러줘.";
+   chart.innerHTML="";
+   history.innerHTML="";
+   return;
+ }
+ const latest=entries[entries.length-1];
+ let changeText="첫 체중 기록";
+ if(entries.length>1){
+   const diff=latest.weight-entries[entries.length-2].weight;
+   changeText=`직전 기록 대비 ${diff>0?"+":""}${diff.toFixed(2)}kg`;
+ }
+ summary.textContent=`최근 체중 ${latest.weight.toFixed(2)}kg · ${latest.date} · ${changeText}`;
+
+ const points=entries.slice(-14);
+ if(points.length>=2){
+   const vals=points.map(x=>x.weight);
+   const min=Math.min(...vals),max=Math.max(...vals);
+   const range=Math.max(max-min,0.5);
+   const coords=vals.map((v,i)=>{
+     const x=12+(i*(276/(vals.length-1)));
+     const y=84-((v-(min-range*0.15))/(range*1.3))*68;
+     return `${x.toFixed(1)},${y.toFixed(1)}`;
+   }).join(" ");
+   chart.innerHTML=`<svg viewBox="0 0 300 100" width="100%" role="img" aria-label="최근 체중 변화 그래프"><polyline points="${coords}" fill="none" stroke="#72d6a0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${coords.split(" ").map(pt=>{const [x,y]=pt.split(",");return `<circle cx="${x}" cy="${y}" r="3" fill="#72d6a0"/>`}).join("")}</svg><div class="note" style="display:flex;justify-content:space-between"><span>${points[0].date.slice(5)}</span><span>${points[points.length-1].date.slice(5)}</span></div>`;
+ }else{
+   chart.innerHTML='<div class="note">체중 기록이 2개 이상 쌓이면 변화 그래프가 표시돼.</div>';
+ }
+ history.innerHTML=entries.slice().reverse().slice(0,8).map((x,i)=>{
+   const prev=entries[entries.length-1-i-1];
+   const delta=prev?` <span style="color:${x.weight-prev.weight>0?"#ff8585":"#72d6a0"}">${x.weight-prev.weight>0?"+":""}${(x.weight-prev.weight).toFixed(2)}kg</span>`:"";
+   return `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line)"><span>${x.date}</span><strong>${x.weight.toFixed(2)}kg${delta}</strong></div>`;
+ }).join("");
+}
+document.getElementById("saveWeightBtn").onclick=()=>{
+ const raw=document.getElementById("weightInput").value;
+ const value=Number(raw);
+ if(!raw || !Number.isFinite(value) || value<20 || value>300){alert("체중을 20~300kg 범위로 입력해줘.");return}
+ const today=dateKey();
+ const existing=state.weightHistory.findIndex(x=>x.date===today);
+ if(existing>=0)state.weightHistory[existing].weight=value;
+ else state.weightHistory.push({date:today,weight:value});
+ state.weightHistory.sort((a,b)=>a.date.localeCompare(b.date));
+ save();renderWeight();
+};
 function renderHistory(){
  const el=document.getElementById("history");el.innerHTML="";
  if(!state.history.length){const p=document.createElement("p");p.className="note";p.textContent="아직 저장된 운동 기록이 없어.";el.append(p);return}
@@ -127,23 +320,44 @@ function renderHistory(){
    const date=document.createElement("span");date.textContent=h.date;
    const total=document.createElement("span");total.textContent=`${h.total}/${h.target}세트`;
    top.append(date,total);
-   const detail=document.createElement("div");detail.className="history-detail";detail.textContent=`등: ${h.back} · ${h.details}`;
+   const detail=document.createElement("div");detail.className="history-detail";detail.textContent=h.details;
    div.append(top,detail);el.append(div);
  });
 }
-document.getElementById("pullBtn").onclick=()=>{state.back="풀업";save();render()};
-document.getElementById("rowBtn").onclick=()=>{state.back="덤벨로우";save();render()};
-document.getElementById("resetBtn").onclick=()=>{if(confirm("오늘 진행한 세트를 모두 초기화할까?")){state.counts=Object.fromEntries(routine.map(x=>[x.id,0]));save();render()}};
+document.getElementById("resetBtn").onclick=()=>{
+ if(confirm("오늘 진행한 세트를 모두 초기화할까?")){
+   state.counts=Object.fromEntries(routine.map(x=>[x.id,0]));
+   state.date=dateKey();save();render();
+ }
+};
 document.getElementById("finishBtn").onclick=()=>{
  const t=total();if(t===0){alert("완료한 세트가 없어. 먼저 세트를 체크해줘.");return}
  if(!confirm(`${t}/${target()}세트를 기록하고 오늘 카운터를 초기화할까?`))return;
- const details=routine.filter(x=>x.id!=="back").map(x=>`${x.name} ${state.counts[x.id]||0}/${x.sets}`).join(" · ");
+ const todayRoutine=activeRoutine();
+ const details=todayRoutine.map(x=>`${x.name} ${state.counts[x.id]||0}/${x.sets}`).join(" · ");
  state.history.push({date:new Date().toLocaleString("ko-KR"),back:state.back,total:t,target:target(),details});
- state.counts=Object.fromEntries(routine.map(x=>[x.id,0]));state.date=new Date().toLocaleDateString("sv-SE");save();render();
+ state.counts=Object.fromEntries(routine.map(x=>[x.id,0]));
+ state.date=dateKey();save();render();renderHistory();
 };
-document.getElementById("clearHistoryBtn").onclick=()=>{if(confirm("저장된 운동 기록을 모두 삭제할까?")){state.history=[];save();renderHistory()}};
-render();
-if("serviceWorker" in navigator && location.protocol.startsWith("http")){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}))}
+document.getElementById("clearHistoryBtn").onclick=()=>{
+ if(confirm("저장된 운동 기록을 모두 삭제할까?")){state.history=[];save();renderHistory()}
+};
+
+// 기존 기록을 보존하면서 다음 운동일에만 날짜 기준으로 자동 초기화.
+// 앱이 열린 상태에서도 자정이 지나면 확인하고, 백그라운드 복귀 시에도 다시 확인.
+checkDateRollover();
+render();renderHistory();renderWeight();
+setInterval(()=>{
+ checkDateRollover();
+ const clock=document.getElementById("clock");
+ if(clock)clock.textContent=new Date().toLocaleTimeString("ko-KR",{hour12:false});
+},1000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)checkDateRollover()});
+window.addEventListener("focus",checkDateRollover);
+
+if("serviceWorker" in navigator && location.protocol.startsWith("http")){
+ window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+}
 </script>
 </body>
 </html>
