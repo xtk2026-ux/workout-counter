@@ -41,8 +41,8 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:20px 0}
 <section class="card" id="cloudCard">
   <div class="progress-head"><strong>PC · 휴대폰 기록 동기화</strong><span class="pill" id="cloudStatus">연결 안 됨</span></div>
   <div id="cloudLoggedOut">
-    <div class="note" style="margin-bottom:10px">PC와 휴대폰에서 같은 계정으로 로그인하면 체중과 운동 기록이 공유돼. 처음 한 번 계정을 만들고 두 기기에서 같은 계정으로 로그인하면 돼.</div>
-    <input id="cloudEmail" type="email" autocomplete="email" placeholder="이메일" style="width:100%;margin-bottom:8px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px;font:inherit">
+    <div class="note" style="margin-bottom:10px">PC에서 ID와 비밀번호로 계정을 만든 다음, 휴대폰에서 똑같이 입력하면 체중과 운동 기록이 공유돼.</div>
+    <input id="cloudEmail" type="text" autocomplete="username" placeholder="아이디 (영문·숫자 3~24자)" style="width:100%;margin-bottom:8px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px;font:inherit">
     <input id="cloudPassword" type="password" autocomplete="current-password" placeholder="앱 로그인 비밀번호" style="width:100%;margin-bottom:8px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px;font:inherit">
     <div class="actions">
       <button class="primary" id="cloudSignupBtn">계정 만들기</button>
@@ -255,25 +255,28 @@ function renderCloudAuth(){
  const loggedIn=!!cloudUser;
  document.getElementById("cloudLoggedOut").classList.toggle("hidden",loggedIn);
  document.getElementById("cloudLoggedIn").classList.toggle("hidden",!loggedIn);
- if(loggedIn)document.getElementById("cloudAccountLabel").textContent="로그인 계정: "+cloudUser.email;
+ if(loggedIn)document.getElementById("cloudAccountLabel").textContent="로그인 ID: "+(cloudUser.user_metadata?.login_id || cloudUser.email.split("@")[0]);
 }
 async function initCloudAuth(){
  if(!cloudClient){setCloudStatus("라이브러리 오류","Supabase 라이브러리를 불러오지 못했어. 인터넷 연결을 확인해줘.");return}
  document.getElementById("cloudSignupBtn").onclick=async()=>{
-   const email=document.getElementById("cloudEmail").value.trim();
+   const loginId=document.getElementById("cloudEmail").value.trim().toLowerCase();
    const password=document.getElementById("cloudPassword").value;
-   if(!email||password.length<8){alert("이메일과 8자 이상의 앱 로그인 비밀번호를 입력해줘.");return}
-   setCloudStatus("계정 생성 중","계정을 만들고 있어.");
-   const {data,error}=await cloudClient.auth.signUp({email,password});
+   if(!/^[a-z0-9_-]{3,24}$/.test(loginId)){alert("아이디는 영문 소문자·숫자·밑줄·하이픈으로 3~24자 입력해줘.");return}
+   if(password.length<8){alert("비밀번호는 8자 이상 입력해줘.");return}
+   const email=loginId+"@workout.invalid";
+   setCloudStatus("계정 생성 중","ID 계정을 만들고 있어.");
+   const {data,error}=await cloudClient.auth.signUp({email,password,options:{data:{login_id:loginId}}});
    if(error){setCloudStatus("계정 생성 실패",error.message);return}
    if(data.session){cloudUser=data.user;renderCloudAuth();await loadCloudForUser(data.user)}
-   else{setCloudStatus("이메일 확인 필요","가입 확인 메일을 확인한 뒤 로그인해줘. Supabase에서 이메일 확인을 끄면 이 단계 없이 바로 로그인할 수 있어.")}
+   else{setCloudStatus("이메일 인증 설정 필요","Supabase에서 Confirm email을 꺼야 해. 실제 이메일은 사용하지 않아.")}
  };
  document.getElementById("cloudLoginBtn").onclick=async()=>{
-   const email=document.getElementById("cloudEmail").value.trim();
+   const loginId=document.getElementById("cloudEmail").value.trim().toLowerCase();
    const password=document.getElementById("cloudPassword").value;
-   if(!email||!password){alert("이메일과 앱 로그인 비밀번호를 입력해줘.");return}
-   setCloudStatus("로그인 중","로그인하고 기록을 불러오고 있어.");
+   if(!/^[a-z0-9_-]{3,24}$/.test(loginId)||!password){alert("아이디와 비밀번호를 입력해줘.");return}
+   const email=loginId+"@workout.invalid";
+   setCloudStatus("로그인 중","ID로 로그인하고 기록을 불러오고 있어.");
    const {data,error}=await cloudClient.auth.signInWithPassword({email,password});
    if(error){setCloudStatus("로그인 실패",error.message);return}
    cloudUser=data.user;renderCloudAuth();await loadCloudForUser(data.user);
