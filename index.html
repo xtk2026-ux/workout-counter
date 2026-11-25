@@ -37,6 +37,28 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:20px 0}
 <header><div><h1>운동 세트 카운터</h1><div class="sub">월 · 수 · 금 · 토 / 무분할 루틴</div></div><div style="text-align:right"><div id="clock" class="big" style="font-size:20px">00:00:00</div><span class="pill" id="dayStatus">기기 내 저장</span></div></header>
 
 
+
+<section class="card" id="cloudCard">
+  <div class="progress-head"><strong>PC · 휴대폰 기록 동기화</strong><span class="pill" id="cloudStatus">연결 안 됨</span></div>
+  <div id="cloudLoggedOut">
+    <div class="note" style="margin-bottom:10px">PC와 휴대폰에서 같은 계정으로 로그인하면 체중과 운동 기록이 공유돼. 처음 한 번 계정을 만들고 두 기기에서 같은 계정으로 로그인하면 돼.</div>
+    <input id="cloudEmail" type="email" autocomplete="email" placeholder="이메일" style="width:100%;margin-bottom:8px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px;font:inherit">
+    <input id="cloudPassword" type="password" autocomplete="current-password" placeholder="앱 로그인 비밀번호" style="width:100%;margin-bottom:8px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px;font:inherit">
+    <div class="actions">
+      <button class="primary" id="cloudSignupBtn">계정 만들기</button>
+      <button class="secondary" id="cloudLoginBtn">로그인</button>
+    </div>
+  </div>
+  <div id="cloudLoggedIn" class="hidden">
+    <div class="note" id="cloudAccountLabel"></div>
+    <div class="actions">
+      <button class="primary" id="cloudSyncBtn">지금 동기화</button>
+      <button class="secondary" id="cloudLogoutBtn">로그아웃</button>
+    </div>
+  </div>
+  <div class="note" id="cloudMessage" style="margin-top:9px">기기 내부 저장은 계속 작동해. 클라우드 동기화는 로그인 후 활성화돼.</div>
+</section>
+
 <section class="card" id="weightCard">
   <div class="progress-head"><strong>체중 기록</strong><span class="muted" style="font-size:12px">kg</span></div>
   <div style="display:flex;gap:9px;align-items:center">
@@ -75,7 +97,10 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:20px 0}
 </section>
 <footer>기록은 이 브라우저의 기기 내부에 저장됩니다. 브라우저 데이터 삭제 또는 기기 변경 시 사라질 수 있어요.</footer>
 </main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+const SUPABASE_URL = "https://xywfqghffimqzuleqiss.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FG5WW_-CVqlP2_9Y6Uj9iw_P_Z2O7AP";
 const routine = [
  {id:"calfraise",name:"카프레이즈",sets:4,group:"하체"},
  {id:"calfraise",name:"카프레이즈",sets:4,group:"하체"},
@@ -124,7 +149,149 @@ if(!state.legacyWeightImportedV12){
 }
 if(!state.date)state.date=dateKey();
 
-function save(){localStorage.setItem(KEY,JSON.stringify(state))}
+let cloudClient=null;
+let cloudUser=null;
+let cloudReady=false;
+let cloudSyncTimer=null;
+let cloudBusy=false;
+let cloudQueued=false;
+try{
+ if(window.supabase?.createClient){
+   cloudClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
+ }
+}catch(e){console.error(e)}
+function setCloudStatus(status,message){
+ const badge=document.getElementById("cloudStatus");
+ const msg=document.getElementById("cloudMessage");
+ if(badge)badge.textContent=status;
+ if(msg && message)msg.textContent=message;
+}
+function save(){
+ localStorage.setItem(KEY,JSON.stringify(state));
+ if(cloudUser && cloudReady) scheduleCloudSync();
+}
+function scheduleCloudSync(){
+ clearTimeout(cloudSyncTimer);
+ cloudSyncTimer=setTimeout(()=>syncCloud(),700);
+}
+function mergeCloudPayload(remote){
+ const today=dateKey();
+ const local=state;
+ const merged={...remote,...local};
+ const weightMap=new Map();
+ (remote.weightHistory||[]).forEach(x=>weightMap.set(x.date,x));
+ (local.weightHistory||[]).forEach(x=>weightMap.set(x.date,x));
+ merged.weightHistory=Array.from(weightMap.values()).sort((a,b)=>a.date.localeCompare(b.date));
+ const histMap=new Map();
+ [...(remote.history||[]),...(local.history||[])].forEach(x=>{
+   const key=[x.date,x.total,x.target,x.details].join("|");
+   histMap.set(key,x);
+ });
+ merged.history=Array.from(histMap.values()).sort((a,b)=>(a.date||"").localeCompare(b.date||""));
+ const remoteToday=remote.date===today;
+ const localToday=local.date===today;
+ if(remoteToday && localToday){
+   merged.counts={...(remote.counts||{})};
+   Object.keys(local.counts||{}).forEach(k=>{
+     merged.counts[k]=Math.max(Number(merged.counts[k]||0),Number(local.counts[k]||0));
+   });
+   merged.date=today;
+ }else if(localToday){
+   merged.counts={...local.counts};merged.date=today;
+ }else if(remoteToday){
+   merged.counts={...(remote.counts||{})};merged.date=today;
+ }else{
+   merged.counts={...Object.fromEntries(routine.map(x=>[x.id,0]))};
+   merged.date=today;
+ }
+ merged.legacyWeightImportedV11=local.legacyWeightImportedV11||remote.legacyWeightImportedV11;
+ merged.legacyWeightImportedV12=local.legacyWeightImportedV12||remote.legacyWeightImportedV12;
+ return merged;
+}
+async function syncCloud(){
+ if(!cloudClient||!cloudUser||!cloudReady)return;
+ if(cloudBusy){cloudQueued=true;return}
+ cloudBusy=true;
+ setCloudStatus("동기화 중","클라우드에 기록을 저장하고 있어.");
+ try{
+   const {error}=await cloudClient.from("workout_sync").upsert({
+     user_id:cloudUser.id,
+     payload:state,
+     updated_at:new Date().toISOString()
+   },{onConflict:"user_id"});
+   if(error)throw error;
+   setCloudStatus("동기화 완료","PC와 휴대폰의 기록이 클라우드에 저장됐어.");
+ }catch(e){
+   console.error(e);
+   setCloudStatus("동기화 오류","동기화 실패: "+(e.message||"설정을 확인해줘."));
+ }finally{
+   cloudBusy=false;
+   if(cloudQueued){cloudQueued=false;scheduleCloudSync()}
+ }
+}
+async function loadCloudForUser(user){
+ cloudUser=user;cloudReady=false;
+ setCloudStatus("연결 중","기존 기기 기록과 클라우드 기록을 확인하고 있어.");
+ try{
+   const {data,error}=await cloudClient.from("workout_sync").select("payload").eq("user_id",user.id).maybeSingle();
+   if(error)throw error;
+   if(data?.payload){
+     state=mergeCloudPayload(data.payload);
+     localStorage.setItem(KEY,JSON.stringify(state));
+     setCloudStatus("연결됨","클라우드 기록을 불러왔어. 이 기기의 기록도 합쳐서 저장할게.");
+   }else{
+     setCloudStatus("첫 동기화","이 기기에 저장된 기록을 클라우드에 처음 올리고 있어.");
+   }
+   cloudReady=true;
+   await syncCloud();
+   render();renderHistory();renderWeight();
+ }catch(e){
+   console.error(e);
+   cloudReady=false;
+   setCloudStatus("연결 오류","클라우드 연결 실패: "+(e.message||"SQL 설정을 확인해줘."));
+ }
+}
+function renderCloudAuth(){
+ const loggedIn=!!cloudUser;
+ document.getElementById("cloudLoggedOut").classList.toggle("hidden",loggedIn);
+ document.getElementById("cloudLoggedIn").classList.toggle("hidden",!loggedIn);
+ if(loggedIn)document.getElementById("cloudAccountLabel").textContent="로그인 계정: "+cloudUser.email;
+}
+async function initCloudAuth(){
+ if(!cloudClient){setCloudStatus("라이브러리 오류","Supabase 라이브러리를 불러오지 못했어. 인터넷 연결을 확인해줘.");return}
+ document.getElementById("cloudSignupBtn").onclick=async()=>{
+   const email=document.getElementById("cloudEmail").value.trim();
+   const password=document.getElementById("cloudPassword").value;
+   if(!email||password.length<8){alert("이메일과 8자 이상의 앱 로그인 비밀번호를 입력해줘.");return}
+   setCloudStatus("계정 생성 중","계정을 만들고 있어.");
+   const {data,error}=await cloudClient.auth.signUp({email,password});
+   if(error){setCloudStatus("계정 생성 실패",error.message);return}
+   if(data.session){cloudUser=data.user;renderCloudAuth();await loadCloudForUser(data.user)}
+   else{setCloudStatus("이메일 확인 필요","가입 확인 메일을 확인한 뒤 로그인해줘. Supabase에서 이메일 확인을 끄면 이 단계 없이 바로 로그인할 수 있어.")}
+ };
+ document.getElementById("cloudLoginBtn").onclick=async()=>{
+   const email=document.getElementById("cloudEmail").value.trim();
+   const password=document.getElementById("cloudPassword").value;
+   if(!email||!password){alert("이메일과 앱 로그인 비밀번호를 입력해줘.");return}
+   setCloudStatus("로그인 중","로그인하고 기록을 불러오고 있어.");
+   const {data,error}=await cloudClient.auth.signInWithPassword({email,password});
+   if(error){setCloudStatus("로그인 실패",error.message);return}
+   cloudUser=data.user;renderCloudAuth();await loadCloudForUser(data.user);
+ };
+ document.getElementById("cloudSyncBtn").onclick=()=>syncCloud();
+ document.getElementById("cloudLogoutBtn").onclick=async()=>{
+   await cloudClient.auth.signOut();cloudUser=null;cloudReady=false;renderCloudAuth();
+   setCloudStatus("로그아웃","이 기기에는 기존 기록이 그대로 남아 있어.");
+ };
+ const {data}=await cloudClient.auth.getSession();
+ if(data.session?.user){cloudUser=data.session.user;renderCloudAuth();await loadCloudForUser(cloudUser)}
+ else{renderCloudAuth()}
+ cloudClient.auth.onAuthStateChange(async(event,session)=>{
+   if(event==="SIGNED_IN" && session?.user && cloudUser?.id!==session.user.id){
+     cloudUser=session.user;renderCloudAuth();await loadCloudForUser(session.user);
+   }else if(event==="SIGNED_OUT"){cloudUser=null;cloudReady=false;renderCloudAuth()}
+ });
+}
 function activeRoutine(d=new Date()){
  const day=dayOf(d);
  return routine.map(x=>{
@@ -364,6 +531,7 @@ document.getElementById("clearHistoryBtn").onclick=()=>{
 // 앱이 열린 상태에서도 자정이 지나면 확인하고, 백그라운드 복귀 시에도 다시 확인.
 checkDateRollover();
 render();renderHistory();renderWeight();
+initCloudAuth();
 setInterval(()=>{
  checkDateRollover();
  const clock=document.getElementById("clock");

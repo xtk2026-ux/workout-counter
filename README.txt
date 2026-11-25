@@ -1,21 +1,32 @@
-운동 카운터 v12
+운동 카운터 v13 - Supabase 동기화
 
-변경 사항
-- 사용자가 다시 제공한 과거 체중값 111개를 정확한 입력 순서대로 반영
-- 마지막 값 82.7kg을 2026-11-25 기록으로 설정
-- 이전 기록은 하루 간격의 연속 날짜로 역산(2026-08-07부터 2026-11-25)
-- 이 날짜들은 실제 측정일이 아니라 순서 보존용 추정 날짜
-- v11에서 가져온 불완전한 과거 체중 시퀀스는 제거하고 v12의 111개로 교체
-- 기존 앱에서 실제 날짜로 입력한 체중 기록은 유지(단, 2026-11-25는 사용자가 지정한 82.7kg으로 교체)
-- CSV의 date_type 필드와 JSON의 source 필드로 실제 날짜와 추정 날짜를 구분
-- 카프레이즈 4세트는 운동 목록 최상단
-- 월·수·금·토 운동일, 수·토 라잉 트라이셉스 익스텐션 2세트, 기존 자동 저장/초기화 기능 유지
+포함 파일
+- index.html: 앱
+- manifest.webmanifest, icon.svg, sw.js: PWA 파일
+- supabase_setup.sql: Supabase DB 테이블 및 보안 정책
 
-주의
-추정 날짜를 이용한 일별 감량 속도는 실제 변화 속도가 아닐 수 있습니다. 체중 순서와 전체 추세 분석에 활용하세요.
+중요
+- 앱에는 Project URL과 Publishable key만 들어 있습니다.
+- Database Password와 Secret key는 앱에 넣지 않습니다.
+- PC와 휴대폰에서 같은 이메일/앱 비밀번호 계정으로 로그인하면 기록이 동기화됩니다.
+- 로그인 세션은 각 브라우저에 저장되므로 일반적으로 기기마다 최초 1회 로그인하면 됩니다.
+- 기기 내부 localStorage 기록을 지우지 마세요.
 
-GitHub Pages 업데이트
-1. ZIP 압축을 풉니다.
-2. 저장소의 index.html, manifest.webmanifest, icon.svg, sw.js를 새 파일로 교체합니다.
-3. Commit changes를 누릅니다.
-4. 삼성 인터넷에서 ?v=12 주소로 열거나 새로고침합니다.
+Supabase 설정
+1. Supabase Dashboard > SQL Editor > New query
+2. supabase_setup.sql 내용을 붙여넣고 Run
+3. Authentication > Providers > Email 에서 Email provider가 활성화되어 있는지 확인
+4. 이메일 확인(Confirm email)이 켜져 있으면 가입 후 확인 메일을 한 번 클릭해야 합니다. 이메일 확인을 끄면 가입 직후 로그인할 수 있지만 계정 보안은 낮아질 수 있습니다.
+
+GitHub Pages 배포
+1. ZIP을 풉니다.
+2. index.html, manifest.webmanifest, icon.svg, sw.js를 GitHub 저장소에서 교체합니다.
+3. supabase_setup.sql은 GitHub에 올릴 필요가 없습니다. Supabase SQL Editor에서 실행하세요.
+4. Commit changes 후 PC와 휴대폰에서 앱을 열어 같은 이메일 계정으로 로그인합니다.
+
+데이터 이전
+- 로그인한 첫 기기에서 기존 기기 내부 기록을 클라우드로 올립니다.
+- 다른 기기에서 같은 계정으로 로그인하면 클라우드 기록과 그 기기의 기존 기록을 합쳐 저장합니다.
+- 체중은 날짜별로 병합되고, 운동 기록은 중복을 제거해 합칩니다.
+- 현재 진행 중인 같은 날짜의 세트 수는 기기별 값을 비교해 더 큰 값을 유지합니다.
+- 동기화가 끝나기 전에는 브라우저 데이터나 사이트 저장공간을 삭제하지 마세요.
