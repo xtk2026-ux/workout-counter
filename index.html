@@ -50,7 +50,7 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:20px 0}
     <button class="secondary" id="exportWeightCsvBtn">체중 CSV 저장</button>
     <button class="secondary" id="exportAllJsonBtn">전체 기록 JSON 저장</button>
   </div>
-  <div class="note" style="margin-top:8px">CSV는 체중 추세 분석용, JSON은 체중과 운동 기록을 함께 보관·분석할 때 사용해. 저장한 파일을 이 채팅에 첨부하면 분석할 수 있어.</div>
+  <div class="note" style="margin-top:8px">과거에 알려준 체중은 측정 날짜가 없어 기록 순서를 유지한 채 하루 간격의 날짜를 임시로 붙였어. 실제 측정일은 아니므로 날짜별 감량 속도보다는 전체 추세와 순서 분석에 활용해. CSV는 체중 분석용, JSON은 체중과 운동 기록을 함께 분석할 때 사용해. 파일을 이 채팅에 첨부하면 돼.</div>
 </section>
 
 <section class="card">
@@ -77,6 +77,7 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:20px 0}
 </main>
 <script>
 const routine = [
+ {id:"calfraise",name:"카프레이즈",sets:4,group:"하체"},
  {id:"calfraise",name:"카프레이즈",sets:4,group:"하체"},
  {id:"facepull",name:"페이스풀",sets:3,group:"어깨"},
  {id:"curlleg",name:"레그컬",sets:2,group:"하체"},
@@ -105,6 +106,22 @@ if(!state.counts)state=initial();
 routine.forEach(x=>{if(typeof state.counts[x.id]!=="number")state.counts[x.id]=0});
 if(!Array.isArray(state.history))state.history=[];
 if(!Array.isArray(state.weightHistory))state.weightHistory=[];
+const legacyWeightsV12=[86.25,86.15,87.6,87.1,87.1,84.9,85.35,85.4,84.95,85.15,84.4,85.1,84.65,84.8,84.8,85.0,85.35,85.1,84.6,84.7,84.4,84.85,84.4,84.3,84.75,84.95,84.75,84.95,84.9,85.15,84.65,84.25,84.7,84.85,84.4,84.3,84.0,84.1,83.85,84.15,83.75,84.2,83.65,83.45,83.4,83.25,83.45,83.7,83.45,84.3,83.55,83.6,83.6,83.5,83.7,83.45,83.4,83.55,83.4,82.8,83.15,83.6,82.95,83.4,82.8,82.8,83.4,83.95,83.65,83.1,84.25,83.85,84.7,84.15,83.7,82.8,83.05,82.95,83.65,83.65,83.3,83.75,83.5,83.35,83.7,83.0,82.95,83.1,83.45,82.7,82.6,82.8,82.3,82.1,82.4,82.5,82.65,82.2,82.4,82.0,82.2,82.7,81.9,81.6,82.3,82.7,83.35,82.7,83.0,83.3,82.7];
+// v12: replace only the previously imported estimated sequence; keep genuine dated app entries.
+if(!state.legacyWeightImportedV12){
+ state.weightHistory=state.weightHistory.filter(x=>x.source!=="legacy_sequence_estimated_date" && x.date!=="2026-11-25");
+ const anchor=new Date(Date.UTC(2026,10,25));
+ const existingDates=new Set(state.weightHistory.map(x=>x.date));
+ const startOffset=legacyWeightsV12.length-1;
+ legacyWeightsV12.forEach((weight,i)=>{
+   const d=new Date(anchor.getTime()-(startOffset-i)*86400000);
+   const date=d.toISOString().slice(0,10);
+   if(!existingDates.has(date))state.weightHistory.push({date,weight,source:"legacy_sequence_estimated_date"});
+ });
+ state.weightHistory.sort((a,b)=>a.date.localeCompare(b.date));
+ state.legacyWeightImportedV12=true;
+ localStorage.setItem(KEY,JSON.stringify(state));
+}
 if(!state.date)state.date=dateKey();
 
 function save(){localStorage.setItem(KEY,JSON.stringify(state))}
@@ -242,7 +259,7 @@ function csvCell(value){
  return '"'+s.replace(/"/g,'""')+'"';
 }
 document.getElementById("exportWeightCsvBtn").onclick=()=>{
- const rows=[["date","weight_kg"],...state.weightHistory.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(x=>[x.date,x.weight])];
+ const rows=[["date","weight_kg","date_type"],...state.weightHistory.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(x=>[x.date,x.weight,x.source==="legacy_sequence_estimated_date"?"estimated_consecutive_date":"recorded_date"])];
  const csv=rows.map(row=>row.map(csvCell).join(",")).join("\r\n");
  downloadText("weight_history.csv",csv,"text/csv;charset=utf-8");
 };
@@ -297,7 +314,7 @@ function renderWeight(){
  history.innerHTML=entries.slice().reverse().slice(0,8).map((x,i)=>{
    const prev=entries[entries.length-1-i-1];
    const delta=prev?` <span style="color:${x.weight-prev.weight>0?"#ff8585":"#72d6a0"}">${x.weight-prev.weight>0?"+":""}${(x.weight-prev.weight).toFixed(2)}kg</span>`:"";
-   return `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line)"><span>${x.date}</span><strong>${x.weight.toFixed(2)}kg${delta}</strong></div>`;
+   return `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line)"><span>${x.date}${x.source==="legacy_sequence_estimated_date"?" · 추정 날짜":""}</span><strong>${x.weight.toFixed(2)}kg${delta}</strong></div>`;
  }).join("");
 }
 document.getElementById("saveWeightBtn").onclick=()=>{
